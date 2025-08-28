@@ -174,10 +174,10 @@
                         <td>${{ "{:.4f}".format(stats.total_cost) }}</td>
                         <td>{{ "{:,}".format(stats.requests_today) }}</td>
                         <td>{{ "{:,}".format(stats.tokens_today) }}</td>
-                        <td><span class="utc-time" data-utc="{{ key.created_at.isoformat() }}">{{ key.created_at.strftime('%Y-%m-%d %H:%M') }}</span></td>
+                        <td><span class="utc-time" data-utc="{{ key.created_at.isoformat() }}Z">{{ key.created_at.strftime('%Y-%m-%d %H:%M') }}</span></td>
                         <td>
                             {% if key.last_used %}
-                                <span class="utc-time" data-utc="{{ key.last_used.isoformat() }}">{{ key.last_used.strftime('%Y-%m-%d %H:%M') }}</span>
+                                <span class="utc-time" data-utc="{{ key.last_used.isoformat() }}Z">{{ key.last_used.strftime('%Y-%m-%d %H:%M') }}</span>
                             {% else %}
                                 <span style="color: #888;">未使用</span>
                             {% endif %}
@@ -221,7 +221,7 @@
             <div style="background: #d4edda; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #28a745;">
                 <strong>{{ active_config.name }}</strong><br>
                 <small>Base URL: {{ active_config.base_url }}</small><br>
-                <small>创建时间: <span class="utc-time" data-utc="{{ active_config.created_at.isoformat() }}">{{ active_config.created_at.strftime('%Y-%m-%d %H:%M') }}</span></small>
+                <small>创建时间: <span class="utc-time" data-utc="{{ active_config.created_at.isoformat() }}Z">{{ active_config.created_at.strftime('%Y-%m-%d %H:%M') }}</span></small>
             </div>
             {% else %}
             <div style="background: #f8d7da; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #dc3545;">
@@ -283,7 +283,7 @@
                                 <span style="color: #6c757d;">○ 未激活</span>
                             {% endif %}
                         </td>
-                        <td><span class="utc-time" data-utc="{{ config.created_at.isoformat() }}">{{ config.created_at.strftime('%Y-%m-%d %H:%M') }}</span></td>
+                        <td><span class="utc-time" data-utc="{{ config.created_at.isoformat() }}Z">{{ config.created_at.strftime('%Y-%m-%d %H:%M') }}</span></td>
                         <td>
                             {% if not config.is_active %}
                                 <form method="post" action="/web/activate-backend/{{ config.id }}" style="display: inline;">
@@ -784,11 +784,19 @@
         
         // 转换UTC时间为本地时间
         function convertUTCTimes() {
+            const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            console.log('用户时区:', userTimeZone);
+            
             document.querySelectorAll('.utc-time').forEach(element => {
                 const utcTime = element.getAttribute('data-utc');
                 if (utcTime) {
                     try {
+                        // 直接解析ISO时间字符串（已经包含Z后缀）
                         const date = new Date(utcTime);
+                        
+                        console.log('原始UTC时间:', utcTime, '解析后:', date, '本地时间:', date.toLocaleString());
+                        
+                        // 转换为本地时间显示
                         const localTime = date.toLocaleString('zh-CN', {
                             year: 'numeric',
                             month: '2-digit',
@@ -797,10 +805,12 @@
                             minute: '2-digit',
                             hour12: false
                         });
+                        
+                        console.log('转换后本地时间:', localTime);
                         element.textContent = localTime;
-                        element.setAttribute('title', `UTC: ${utcTime}`);
+                        element.setAttribute('title', `UTC: ${utcTime.replace('Z', '')} | 本地: ${localTime} | 时区: ${userTimeZone}`);
                     } catch (error) {
-                        console.error('时间转换失败:', error);
+                        console.error('时间转换失败:', error, 'UTC时间:', utcTime);
                     }
                 }
             });

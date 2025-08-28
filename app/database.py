@@ -20,8 +20,8 @@ class BackendConfig(Base):
     api_key = Column(String, nullable=False)  # API密钥
     is_active = Column(Boolean, default=False)  # 是否为当前激活的配置
     is_default = Column(Boolean, default=False)  # 是否为默认配置
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.utcnow())
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
 
 class APIKey(Base):
     __tablename__ = "api_keys"
@@ -34,7 +34,7 @@ class APIKey(Base):
     quota_limit = Column(Integer, default=100000)  # Token总量限制
     cost_limit = Column(Float, default=10.0)  # 每小时成本限制 (USD)
     daily_quota = Column(Float, default=50.0)  # 每日成本额度限制 (USD)
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.utcnow())
     last_used = Column(DateTime)
 
 class UsageRecord(Base):
@@ -66,7 +66,7 @@ class UsageRecord(Base):
     # TPS (Tokens Per Second) 统计
     output_tps = Column(Float, default=0.0)  # 输出token生成速度
     
-    timestamp = Column(DateTime, default=func.now())
+    timestamp = Column(DateTime, default=lambda: datetime.utcnow())
     status_code = Column(Integer)
     error_message = Column(Text)
 
