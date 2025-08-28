@@ -174,10 +174,10 @@
                         <td>${{ "{:.4f}".format(stats.total_cost) }}</td>
                         <td>{{ "{:,}".format(stats.requests_today) }}</td>
                         <td>{{ "{:,}".format(stats.tokens_today) }}</td>
-                        <td>{{ key.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td><span class="utc-time" data-utc="{{ key.created_at.isoformat() }}">{{ key.created_at.strftime('%Y-%m-%d %H:%M') }}</span></td>
                         <td>
                             {% if key.last_used %}
-                                {{ key.last_used.strftime('%Y-%m-%d %H:%M') }}
+                                <span class="utc-time" data-utc="{{ key.last_used.isoformat() }}">{{ key.last_used.strftime('%Y-%m-%d %H:%M') }}</span>
                             {% else %}
                                 <span style="color: #888;">未使用</span>
                             {% endif %}
@@ -221,7 +221,7 @@
             <div style="background: #d4edda; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #28a745;">
                 <strong>{{ active_config.name }}</strong><br>
                 <small>Base URL: {{ active_config.base_url }}</small><br>
-                <small>创建时间: {{ active_config.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                <small>创建时间: <span class="utc-time" data-utc="{{ active_config.created_at.isoformat() }}">{{ active_config.created_at.strftime('%Y-%m-%d %H:%M') }}</span></small>
             </div>
             {% else %}
             <div style="background: #f8d7da; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #dc3545;">
@@ -283,7 +283,7 @@
                                 <span style="color: #6c757d;">○ 未激活</span>
                             {% endif %}
                         </td>
-                        <td>{{ config.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td><span class="utc-time" data-utc="{{ config.created_at.isoformat() }}">{{ config.created_at.strftime('%Y-%m-%d %H:%M') }}</span></td>
                         <td>
                             {% if not config.is_active %}
                                 <form method="post" action="/web/activate-backend/{{ config.id }}" style="display: inline;">
@@ -781,6 +781,33 @@
                 closeKeyModal();
             }
         });
+        
+        // 转换UTC时间为本地时间
+        function convertUTCTimes() {
+            document.querySelectorAll('.utc-time').forEach(element => {
+                const utcTime = element.getAttribute('data-utc');
+                if (utcTime) {
+                    try {
+                        const date = new Date(utcTime);
+                        const localTime = date.toLocaleString('zh-CN', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false
+                        });
+                        element.textContent = localTime;
+                        element.setAttribute('title', `UTC: ${utcTime}`);
+                    } catch (error) {
+                        console.error('时间转换失败:', error);
+                    }
+                }
+            });
+        }
+        
+        // 页面加载完成后转换时间
+        document.addEventListener('DOMContentLoaded', convertUTCTimes);
     </script>
 </body>
 </html>
