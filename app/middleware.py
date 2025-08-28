@@ -18,6 +18,10 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
         forwarded_host = request.headers.get("x-forwarded-host") 
         forwarded_port = request.headers.get("x-forwarded-port")
         forwarded_for = request.headers.get("x-forwarded-for")
+        host = request.headers.get("host")
+        
+        # 调试日志
+        logger.info(f"Request headers - Host: {host}, X-Forwarded-Host: {forwarded_host}, X-Forwarded-Proto: {forwarded_proto}")
         
         # 如果有代理头信息，更新request.url
         if forwarded_proto or forwarded_host:
@@ -53,7 +57,9 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
             request.state.forwarded_proto = scheme
             request.state.forwarded_host = host
             
-            logger.debug(f"Proxy headers detected - Original: {request.url}, Forwarded: {new_url}")
+            logger.info(f"Proxy headers detected - Original: {request.url}, Forwarded: {new_url}")
+        else:
+            logger.info("No proxy headers detected, using direct connection")
         
         # 设置真实IP
         if forwarded_for:

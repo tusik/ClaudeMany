@@ -40,6 +40,34 @@ async def proxy_claude_api(
             }
         )
     
+    # 检查成本限制
+    cost_allowed, cost_info = crud.check_cost_limit(db, db_key.id, db_key.cost_limit)
+    if not cost_allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Cost limit exceeded. Used ${cost_info['current_cost']:.6f}/${cost_info['cost_limit']:.2f} in the last hour. Try again later.",
+            headers={
+                "X-CostLimit-Limit": str(cost_info['cost_limit']),
+                "X-CostLimit-Remaining": str(cost_info['remaining_cost']),
+                "X-CostLimit-Reset": cost_info['reset_time'],
+                "Retry-After": "3600"
+            }
+        )
+    
+    # 检查每日额度限制
+    quota_allowed, quota_info = crud.check_daily_quota(db, db_key.id, db_key.daily_quota)
+    if not quota_allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily quota exceeded. Used ${quota_info['current_usage']:.6f}/${quota_info['daily_quota']:.2f} today. Try again tomorrow.",
+            headers={
+                "X-DailyQuota-Limit": str(quota_info['daily_quota']),
+                "X-DailyQuota-Remaining": str(quota_info['remaining_quota']),
+                "X-DailyQuota-Reset": quota_info['reset_time'],
+                "Retry-After": "86400"
+            }
+        )
+    
     # 获取当前激活的后端配置
     backend_config = crud.get_active_backend_config(db)
     if not backend_config:

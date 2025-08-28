@@ -6,11 +6,15 @@ class APIKeyCreate(BaseModel):
     name: str
     rate_limit: Optional[int] = None
     quota_limit: Optional[int] = None
+    cost_limit: Optional[float] = None
+    daily_quota: Optional[float] = None
 
 class APIKeyUpdate(BaseModel):
     name: Optional[str] = None
     rate_limit: Optional[int] = None
     quota_limit: Optional[int] = None
+    cost_limit: Optional[float] = None
+    daily_quota: Optional[float] = None
 
 class APIKeyResponse(BaseModel):
     id: str
@@ -19,6 +23,8 @@ class APIKeyResponse(BaseModel):
     is_active: bool
     rate_limit: int
     quota_limit: int
+    cost_limit: float
+    daily_quota: float
     created_at: datetime
     last_used: Optional[datetime]
 
@@ -28,6 +34,8 @@ class APIKeyInfo(BaseModel):
     is_active: bool
     rate_limit: int
     quota_limit: int
+    cost_limit: float
+    daily_quota: float
     created_at: datetime
     last_used: Optional[datetime]
 

@@ -139,6 +139,34 @@ docker build -t claudemany .
 docker run -p 8000:8000 --env-file .env claudemany
 ```
 
+## 🌐 Reverse Proxy Setup
+
+For production deployment with Nginx:
+
+1. **Copy the example configuration**:
+   ```bash
+   cp nginx.conf.example /etc/nginx/sites-available/claudemany
+   ln -s /etc/nginx/sites-available/claudemany /etc/nginx/sites-enabled/
+   ```
+
+2. **Update the configuration**:
+   - Replace `your-domain.com` with your actual domain
+   - Configure SSL certificates for HTTPS
+   - Adjust upstream server address if needed
+
+3. **Key proxy headers** (essential for proper functioning):
+   ```nginx
+   proxy_set_header Host $host;
+   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+   proxy_set_header X-Forwarded-Proto $scheme;
+   proxy_set_header X-Forwarded-Host $host;
+   ```
+
+4. **Restart Nginx**:
+   ```bash
+   nginx -t && systemctl reload nginx
+   ```
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

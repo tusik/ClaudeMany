@@ -17,7 +17,7 @@
         .stat-number { font-size: 2em; font-weight: bold; color: #007bff; }
         .stat-label { color: #666; margin-top: 5px; }
         .section { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .create-form { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 15px; align-items: end; margin-bottom: 20px; }
+        .create-form { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr auto; gap: 15px; align-items: end; margin-bottom: 20px; }
         .create-form input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
         .create-form button { background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
         table { width: 100%; border-collapse: collapse; }
@@ -107,6 +107,14 @@
                     <label>配额限制 (Token):</label>
                     <input type="number" name="quota_limit" value="100000" required>
                 </div>
+                <div>
+                    <label>成本限制 (USD/小时):</label>
+                    <input type="number" name="cost_limit" value="10.0" step="0.01" min="0" required>
+                </div>
+                <div>
+                    <label>每日额度 (USD/天):</label>
+                    <input type="number" name="daily_quota" value="50.0" step="0.01" min="0" required>
+                </div>
                 <button type="submit">创建密钥</button>
             </form>
         </div>
@@ -120,6 +128,8 @@
                         <th>状态</th>
                         <th>速率限制</th>
                         <th>配额限制</th>
+                        <th>成本限制</th>
+                        <th>每日额度</th>
                         <th>总请求数</th>
                         <th>总Token使用量</th>
                         <th>总成本</th>
@@ -148,8 +158,16 @@
                             <input type="number" id="rate-edit-{{ key.id }}" value="{{ key.rate_limit }}" style="display: none; width: 80px;">
                         </td>
                         <td>
-                            <span id="quota-display-{{ key.id }}">{{ "{:,}".format(key.quota_limit) }}</span>
-                            <input type="number" id="quota-edit-{{ key.id }}" value="{{ key.quota_limit }}" style="display: none; width: 100px;">
+                            <span id="token-quota-display-{{ key.id }}">{{ "{:,}".format(key.quota_limit) }}</span>
+                            <input type="number" id="token-quota-edit-{{ key.id }}" value="{{ key.quota_limit }}" style="display: none; width: 100px;">
+                        </td>
+                        <td>
+                            <span id="cost-display-{{ key.id }}">${{ "{:.2f}".format(key.cost_limit) }}/小时</span>
+                            <input type="number" id="cost-edit-{{ key.id }}" value="{{ key.cost_limit }}" step="0.01" style="display: none; width: 80px;">
+                        </td>
+                        <td>
+                            <span id="daily-quota-display-{{ key.id }}">${{ "{:.2f}".format(key.daily_quota) }}/天</span>
+                            <input type="number" id="daily-quota-edit-{{ key.id }}" value="{{ key.daily_quota }}" step="0.01" style="display: none; width: 80px;">
                         </td>
                         <td>{{ "{:,}".format(stats.total_requests) }}</td>
                         <td>{{ "{:,}".format(stats.total_tokens) }}</td>
@@ -652,41 +670,58 @@
         function editKey(keyId) {
             // 隐藏显示元素，显示编辑元素
             document.getElementById(`rate-display-${keyId}`).style.display = 'none';
-            document.getElementById(`quota-display-${keyId}`).style.display = 'none';
+            document.getElementById(`token-quota-display-${keyId}`).style.display = 'none';
+            document.getElementById(`cost-display-${keyId}`).style.display = 'none';
+            document.getElementById(`daily-quota-display-${keyId}`).style.display = 'none';
             document.getElementById(`actions-display-${keyId}`).style.display = 'none';
             
             document.getElementById(`rate-edit-${keyId}`).style.display = 'inline';
-            document.getElementById(`quota-edit-${keyId}`).style.display = 'inline';
+            document.getElementById(`token-quota-edit-${keyId}`).style.display = 'inline';
+            document.getElementById(`cost-edit-${keyId}`).style.display = 'inline';
+            document.getElementById(`daily-quota-edit-${keyId}`).style.display = 'inline';
             document.getElementById(`actions-edit-${keyId}`).style.display = 'block';
         }
         
         function cancelEdit(keyId) {
             // 恢复原始值
             const rateInput = document.getElementById(`rate-edit-${keyId}`);
-            const quotaInput = document.getElementById(`quota-edit-${keyId}`);
+            const tokenQuotaInput = document.getElementById(`token-quota-edit-${keyId}`);
+            const costInput = document.getElementById(`cost-edit-${keyId}`);
+            const dailyQuotaInput = document.getElementById(`daily-quota-edit-${keyId}`);
             
             // 重置为原始值（从display元素获取）
             const rateDisplay = document.getElementById(`rate-display-${keyId}`).textContent;
-            const quotaDisplay = document.getElementById(`quota-display-${keyId}`).textContent;
+            const tokenQuotaDisplay = document.getElementById(`token-quota-display-${keyId}`).textContent;
+            const costDisplay = document.getElementById(`cost-display-${keyId}`).textContent;
+            const dailyQuotaDisplay = document.getElementById(`daily-quota-display-${keyId}`).textContent;
             
             rateInput.value = parseInt(rateDisplay.replace('/小时', ''));
-            quotaInput.value = parseInt(quotaDisplay.replace(/,/g, ''));
+            tokenQuotaInput.value = parseInt(tokenQuotaDisplay.replace(/,/g, ''));
+            costInput.value = parseFloat(costDisplay.replace('$', '').replace('/小时', ''));
+            dailyQuotaInput.value = parseFloat(dailyQuotaDisplay.replace('$', '').replace('/天', ''));
             
             // 隐藏编辑元素，显示显示元素
             document.getElementById(`rate-display-${keyId}`).style.display = 'inline';
-            document.getElementById(`quota-display-${keyId}`).style.display = 'inline';
+            document.getElementById(`token-quota-display-${keyId}`).style.display = 'inline';
+            document.getElementById(`cost-display-${keyId}`).style.display = 'inline';
+            document.getElementById(`daily-quota-display-${keyId}`).style.display = 'inline';
             document.getElementById(`actions-display-${keyId}`).style.display = 'block';
             
             document.getElementById(`rate-edit-${keyId}`).style.display = 'none';
-            document.getElementById(`quota-edit-${keyId}`).style.display = 'none';
+            document.getElementById(`token-quota-edit-${keyId}`).style.display = 'none';
+            document.getElementById(`cost-edit-${keyId}`).style.display = 'none';
+            document.getElementById(`daily-quota-edit-${keyId}`).style.display = 'none';
             document.getElementById(`actions-edit-${keyId}`).style.display = 'none';
         }
         
         function saveKey(keyId) {
             const rateLimit = document.getElementById(`rate-edit-${keyId}`).value;
-            const quotaLimit = document.getElementById(`quota-edit-${keyId}`).value;
+            const quotaLimit = document.getElementById(`token-quota-edit-${keyId}`).value;
+            const costLimit = document.getElementById(`cost-edit-${keyId}`).value;
+            const dailyQuota = document.getElementById(`daily-quota-edit-${keyId}`).value;
             
-            if (!rateLimit || !quotaLimit || rateLimit < 0 || quotaLimit < 0) {
+            if (!rateLimit || !quotaLimit || !costLimit || !dailyQuota || 
+                rateLimit < 0 || quotaLimit < 0 || costLimit < 0 || dailyQuota < 0) {
                 alert('请输入有效的限制值');
                 return;
             }
@@ -700,7 +735,9 @@
                 credentials: 'include', // 使用cookie认证
                 body: JSON.stringify({
                     rate_limit: parseInt(rateLimit),
-                    quota_limit: parseInt(quotaLimit)
+                    quota_limit: parseInt(quotaLimit),
+                    cost_limit: parseFloat(costLimit),
+                    daily_quota: parseFloat(dailyQuota)
                 })
             })
             .then(response => response.json())
@@ -708,7 +745,9 @@
                 if (data.id) {
                     // 更新显示
                     document.getElementById(`rate-display-${keyId}`).textContent = `${rateLimit}/小时`;
-                    document.getElementById(`quota-display-${keyId}`).textContent = parseInt(quotaLimit).toLocaleString();
+                    document.getElementById(`token-quota-display-${keyId}`).textContent = parseInt(quotaLimit).toLocaleString();
+                    document.getElementById(`cost-display-${keyId}`).textContent = `$${parseFloat(costLimit).toFixed(2)}/小时`;
+                    document.getElementById(`daily-quota-display-${keyId}`).textContent = `$${parseFloat(dailyQuota).toFixed(2)}/天`;
                     
                     // 切换回显示模式
                     cancelEdit(keyId);

@@ -30,8 +30,10 @@ class APIKey(Base):
     name = Column(String, nullable=False)
     key_hash = Column(String, unique=True, nullable=False)
     is_active = Column(Boolean, default=True)
-    rate_limit = Column(Integer, default=1000)
-    quota_limit = Column(Integer, default=100000)
+    rate_limit = Column(Integer, default=1000)  # 每小时请求数限制
+    quota_limit = Column(Integer, default=100000)  # Token总量限制
+    cost_limit = Column(Float, default=10.0)  # 每小时成本限制 (USD)
+    daily_quota = Column(Float, default=50.0)  # 每日成本额度限制 (USD)
     created_at = Column(DateTime, default=func.now())
     last_used = Column(DateTime)
 

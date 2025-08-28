@@ -36,6 +36,8 @@ async def create_api_key(
         is_active=db_key.is_active,
         rate_limit=db_key.rate_limit,
         quota_limit=db_key.quota_limit,
+        cost_limit=db_key.cost_limit,
+        daily_quota=db_key.daily_quota,
         created_at=db_key.created_at,
         last_used=db_key.last_used
     )
@@ -88,7 +90,9 @@ async def update_api_key(
         key_id, 
         name=api_key_update.name,
         rate_limit=api_key_update.rate_limit,
-        quota_limit=api_key_update.quota_limit
+        quota_limit=api_key_update.quota_limit,
+        cost_limit=api_key_update.cost_limit,
+        daily_quota=api_key_update.daily_quota
     ):
         raise HTTPException(status_code=404, detail="API key not found")
     
@@ -100,6 +104,8 @@ async def update_api_key(
         is_active=db_key.is_active,
         rate_limit=db_key.rate_limit,
         quota_limit=db_key.quota_limit,
+        cost_limit=db_key.cost_limit,
+        daily_quota=db_key.daily_quota,
         created_at=db_key.created_at,
         last_used=db_key.last_used
     )
@@ -145,4 +151,66 @@ async def get_rate_limit_status(
         "remaining": max(0, db_key.rate_limit - (recent_requests or 0)),
         "reset_time": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
         "is_limited": db_key.rate_limit > 0
+    }
+
+@router.get("/api-keys/{key_id}/cost-limit-status")
+async def get_cost_limit_status(
+    key_id: str,
+    current_user: str = Depends(auth.get_current_admin_user),
+    db: Session = Depends(database.get_db)
+):
+    """获取API密钥的成本限制状态"""
+    db_key = db.query(database.APIKey).filter(database.APIKey.id == key_id).first()
+    if not db_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    
+    # 获取最近一小时的成本
+    from datetime import datetime, timedelta
+    from sqlalchemy import func, and_
+    
+    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    recent_cost = db.query(func.sum(database.UsageRecord.cost)).filter(
+        and_(
+            database.UsageRecord.api_key_id == key_id,
+            database.UsageRecord.timestamp >= one_hour_ago
+        )
+    ).scalar() or 0.0
+    
+    return {
+        "cost_limit": db_key.cost_limit,
+        "current_cost": round(recent_cost, 6),
+        "remaining_cost": max(0, round(db_key.cost_limit - recent_cost, 6)),
+        "reset_time": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
+        "is_limited": db_key.cost_limit > 0
+    }
+
+@router.get("/api-keys/{key_id}/daily-quota-status")
+async def get_daily_quota_status(
+    key_id: str,
+    current_user: str = Depends(auth.get_current_admin_user),
+    db: Session = Depends(database.get_db)
+):
+    """获取API密钥的每日额度状态"""
+    db_key = db.query(database.APIKey).filter(database.APIKey.id == key_id).first()
+    if not db_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    
+    # 获取今日的成本
+    from datetime import datetime, timedelta
+    from sqlalchemy import func, and_
+    
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_cost = db.query(func.sum(database.UsageRecord.cost)).filter(
+        and_(
+            database.UsageRecord.api_key_id == key_id,
+            database.UsageRecord.timestamp >= today_start
+        )
+    ).scalar() or 0.0
+    
+    return {
+        "daily_quota": db_key.daily_quota,
+        "current_usage": round(today_cost, 6),
+        "remaining_quota": max(0, round(db_key.daily_quota - today_cost, 6)),
+        "reset_time": (today_start + timedelta(days=1)).isoformat(),
+        "is_limited": db_key.daily_quota > 0
     }

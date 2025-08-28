@@ -100,7 +100,9 @@ def create_api_key(db: Session, api_key: schemas.APIKeyCreate) -> tuple[database
         name=api_key.name,
         key_hash=key_hash,
         rate_limit=api_key.rate_limit or 1000,
-        quota_limit=api_key.quota_limit or 100000
+        quota_limit=api_key.quota_limit or 100000,
+        cost_limit=api_key.cost_limit or 10.0,
+        daily_quota=api_key.daily_quota or 50.0
     )
     db.add(db_key)
     db.commit()
@@ -123,7 +125,7 @@ def deactivate_api_key(db: Session, key_id: str) -> bool:
         return True
     return False
 
-def update_api_key(db: Session, key_id: str, name: str = None, rate_limit: int = None, quota_limit: int = None) -> bool:
+def update_api_key(db: Session, key_id: str, name: str = None, rate_limit: int = None, quota_limit: int = None, cost_limit: float = None, daily_quota: float = None) -> bool:
     """更新API密钥的配置"""
     db_key = db.query(database.APIKey).filter(database.APIKey.id == key_id).first()
     if not db_key:
@@ -135,6 +137,10 @@ def update_api_key(db: Session, key_id: str, name: str = None, rate_limit: int =
         db_key.rate_limit = rate_limit
     if quota_limit is not None:
         db_key.quota_limit = quota_limit
+    if cost_limit is not None:
+        db_key.cost_limit = cost_limit
+    if daily_quota is not None:
+        db_key.daily_quota = daily_quota
     
     db.commit()
     return True
@@ -171,6 +177,68 @@ def check_rate_limit(db: Session, api_key_id: str, rate_limit: int) -> tuple[boo
         "current_usage": recent_requests,
         "remaining": max(0, rate_limit - recent_requests),
         "reset_time": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
+        "unlimited": False
+    }
+    
+    return allowed, limit_info
+
+def check_cost_limit(db: Session, api_key_id: str, cost_limit: float) -> tuple[bool, dict]:
+    """检查API密钥是否超过每小时成本限制
+    
+    Returns:
+        tuple[bool, dict]: (是否允许请求, 成本限制信息)
+    """
+    if cost_limit <= 0:
+        return True, {"unlimited": True}  # 无限制
+    
+    # 计算一小时前的时间
+    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    
+    # 查询最近一小时的成本总和
+    recent_cost = db.query(func.sum(database.UsageRecord.cost)).filter(
+        and_(
+            database.UsageRecord.api_key_id == api_key_id,
+            database.UsageRecord.timestamp >= one_hour_ago
+        )
+    ).scalar() or 0.0
+    
+    allowed = recent_cost < cost_limit
+    limit_info = {
+        "cost_limit": cost_limit,
+        "current_cost": round(recent_cost, 6),
+        "remaining_cost": max(0, round(cost_limit - recent_cost, 6)),
+        "reset_time": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
+        "unlimited": False
+    }
+    
+    return allowed, limit_info
+
+def check_daily_quota(db: Session, api_key_id: str, daily_quota: float) -> tuple[bool, dict]:
+    """检查API密钥是否超过每日成本额度限制
+    
+    Returns:
+        tuple[bool, dict]: (是否允许请求, 额度限制信息)
+    """
+    if daily_quota <= 0:
+        return True, {"unlimited": True}  # 无限制
+    
+    # 计算今日00:00:00的时间
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # 查询今日的成本总和
+    today_cost = db.query(func.sum(database.UsageRecord.cost)).filter(
+        and_(
+            database.UsageRecord.api_key_id == api_key_id,
+            database.UsageRecord.timestamp >= today_start
+        )
+    ).scalar() or 0.0
+    
+    allowed = today_cost < daily_quota
+    limit_info = {
+        "daily_quota": daily_quota,
+        "current_usage": round(today_cost, 6),
+        "remaining_quota": max(0, round(daily_quota - today_cost, 6)),
+        "reset_time": (today_start + timedelta(days=1)).isoformat(),
         "unlimited": False
     }
     
