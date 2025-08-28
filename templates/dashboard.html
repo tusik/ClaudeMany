@@ -466,26 +466,19 @@
         function loadCharts() {
             if (requestsChart || tokensChart || costsChart) return; // 避免重复加载
             
-            // 获取所有API密钥的汇总图表数据
-            fetch('/usage/summary')
+            // 从API获取真实的图表数据
+            fetch('/usage/chart?days=30')
                 .then(response => response.json())
-                .then(data => {
-                    // 创建模拟的30天数据（实际应该从API获取）
-                    const dates = [];
-                    const requests = [];
-                    const tokens = [];
-                    const costs = [];
+                .then(result => {
+                    const data = result.data;
                     
-                    for (let i = 29; i >= 0; i--) {
-                        const date = new Date();
-                        date.setDate(date.getDate() - i);
-                        dates.push(date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }));
-                        
-                        // 模拟数据，实际应该从/usage/chart接口获取
-                        requests.push(Math.floor(Math.random() * 100 + 50));
-                        tokens.push(Math.floor(Math.random() * 50000 + 10000));
-                        costs.push(Math.random() * 5 + 1);
-                    }
+                    const dates = data.map(d => {
+                        const date = new Date(d.date);
+                        return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+                    });
+                    const requests = data.map(d => d.total_requests);
+                    const tokens = data.map(d => d.total_tokens);
+                    const costs = data.map(d => d.total_cost);
                     
                     // 请求数趋势图
                     const requestsCtx = document.getElementById('requestsChart').getContext('2d');
@@ -498,7 +491,8 @@
                                 data: requests,
                                 borderColor: '#007bff',
                                 backgroundColor: 'rgba(0, 123, 255, 0.1)',
-                                tension: 0.4
+                                tension: 0.4,
+                                fill: true
                             }]
                         },
                         options: {
@@ -523,7 +517,8 @@
                                 data: tokens,
                                 borderColor: '#28a745',
                                 backgroundColor: 'rgba(40, 167, 69, 0.1)',
-                                tension: 0.4
+                                tension: 0.4,
+                                fill: true
                             }]
                         },
                         options: {
@@ -548,7 +543,8 @@
                                 data: costs,
                                 borderColor: '#ffc107',
                                 backgroundColor: 'rgba(255, 193, 7, 0.1)',
-                                tension: 0.4
+                                tension: 0.4,
+                                fill: true
                             }]
                         },
                         options: {
@@ -556,10 +552,26 @@
                             maintainAspectRatio: false,
                             scales: {
                                 y: {
-                                    beginAtZero: true
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return '$' + value.toFixed(4);
+                                        }
+                                    }
                                 }
                             }
                         }
+                    });
+                })
+                .catch(error => {
+                    console.error('加载图表数据失败:', error);
+                    // 如果API失败，显示错误信息而不是假数据
+                    ['requestsChart', 'tokensChart', 'costsChart'].forEach(chartId => {
+                        const ctx = document.getElementById(chartId).getContext('2d');
+                        ctx.fillStyle = '#dc3545';
+                        ctx.font = '16px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('数据加载失败', ctx.canvas.width/2, ctx.canvas.height/2);
                     });
                 });
         }

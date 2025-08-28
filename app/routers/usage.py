@@ -91,3 +91,64 @@ async def get_overall_usage_summary(db: Session = Depends(database.get_db)):
         "total_cost": summary.total_cost or 0.0,
         "active_keys": summary.active_keys or 0
     }
+
+@router.get("/chart")
+async def get_overall_usage_chart_data(
+    days: int = Query(30, ge=1, le=365),
+    db: Session = Depends(database.get_db)
+):
+    """获取所有API密钥的每日用量汇总图表数据"""
+    from datetime import datetime, timedelta
+    from sqlalchemy import func, and_
+    
+    end_date = datetime.utcnow().date()
+    start_date = end_date - timedelta(days=days-1)
+    
+    # 按日期汇总所有API密钥的用量
+    daily_stats = db.query(
+        func.date(database.UsageRecord.timestamp).label('date'),
+        func.count(database.UsageRecord.id).label('total_requests'),
+        func.sum(database.UsageRecord.tokens_used).label('total_tokens'),
+        func.sum(database.UsageRecord.cost).label('total_cost')
+    ).filter(
+        and_(
+            func.date(database.UsageRecord.timestamp) >= start_date.strftime('%Y-%m-%d'),
+            func.date(database.UsageRecord.timestamp) <= end_date.strftime('%Y-%m-%d')
+        )
+    ).group_by(
+        func.date(database.UsageRecord.timestamp)
+    ).all()
+    
+    # 创建完整的日期范围数据
+    chart_data = []
+    current_date = start_date
+    
+    # 将查询结果转换为字典以便快速查找
+    stats_dict = {str(stat.date): stat for stat in daily_stats}
+    
+    while current_date <= end_date:
+        date_str = current_date.strftime('%Y-%m-%d')
+        stat = stats_dict.get(date_str)
+        
+        if stat:
+            chart_data.append({
+                "date": date_str,
+                "total_requests": stat.total_requests or 0,
+                "total_tokens": stat.total_tokens or 0,
+                "total_cost": round(stat.total_cost or 0.0, 6)
+            })
+        else:
+            # 没有数据的日期填充0
+            chart_data.append({
+                "date": date_str,
+                "total_requests": 0,
+                "total_tokens": 0,
+                "total_cost": 0.0
+            })
+        
+        current_date += timedelta(days=1)
+    
+    return {
+        "days": days,
+        "data": chart_data
+    }
