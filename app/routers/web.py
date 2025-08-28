@@ -9,6 +9,17 @@ from app.config import settings
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
+def get_redirect_url(request: Request, path: str) -> str:
+    """生成考虑代理头信息的重定向URL"""
+    # 检查是否有代理头信息
+    if hasattr(request.state, 'forwarded_proto') and hasattr(request.state, 'forwarded_host'):
+        scheme = request.state.forwarded_proto
+        host = request.state.forwarded_host
+        return f"{scheme}://{host}{path}"
+    else:
+        # 使用相对路径重定向
+        return path
+
 @router.get("/", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, db: Session = Depends(database.get_db)):
     try:
@@ -80,7 +91,7 @@ async def web_login(request: Request, username: str = Form(...), password: str =
         data={"sub": username}, expires_delta=access_token_expires
     )
     
-    response = RedirectResponse(url="/web", status_code=303)
+    response = RedirectResponse(url=get_redirect_url(request, "/web"), status_code=303)
     response.set_cookie(
         key="admin_token", 
         value=access_token,
@@ -91,7 +102,7 @@ async def web_login(request: Request, username: str = Form(...), password: str =
 
 @router.post("/logout")
 async def web_logout():
-    response = RedirectResponse(url="/web", status_code=303)
+    response = RedirectResponse(url=get_redirect_url(request, "/web"), status_code=303)
     response.delete_cookie("admin_token")
     return response
 
@@ -120,7 +131,7 @@ async def web_create_key(
     api_key_data = APIKeyCreate(name=name, rate_limit=rate_limit, quota_limit=quota_limit)
     db_key, key = crud.create_api_key(db, api_key_data)
     
-    return RedirectResponse(url=f"/web?new_key={key}", status_code=303)
+    return RedirectResponse(url=get_redirect_url(request, f"/web?new_key={key}"), status_code=303)
 
 @router.post("/deactivate-key/{key_id}")
 async def web_deactivate_key(
@@ -142,7 +153,7 @@ async def web_deactivate_key(
         raise HTTPException(status_code=401, detail="Token无效")
     
     crud.deactivate_api_key(db, key_id)
-    return RedirectResponse(url="/web", status_code=303)
+    return RedirectResponse(url=get_redirect_url(request, "/web"), status_code=303)
 
 # 后端配置管理路由
 @router.post("/create-backend")
@@ -171,7 +182,7 @@ async def web_create_backend(
     is_default = 'is_default' in form_data
     
     crud.create_backend_config(db, name, base_url, api_key, is_default)
-    return RedirectResponse(url="/web", status_code=303)
+    return RedirectResponse(url=get_redirect_url(request, "/web"), status_code=303)
 
 @router.post("/activate-backend/{config_id}")
 async def web_activate_backend(
@@ -193,7 +204,7 @@ async def web_activate_backend(
         raise HTTPException(status_code=401, detail="Token无效")
     
     crud.activate_backend_config(db, config_id)
-    return RedirectResponse(url="/web", status_code=303)
+    return RedirectResponse(url=get_redirect_url(request, "/web"), status_code=303)
 
 @router.post("/delete-backend/{config_id}")
 async def web_delete_backend(
@@ -215,6 +226,6 @@ async def web_delete_backend(
         raise HTTPException(status_code=401, detail="Token无效")
     
     if crud.delete_backend_config(db, config_id):
-        return RedirectResponse(url="/web", status_code=303)
+        return RedirectResponse(url=get_redirect_url(request, "/web"), status_code=303)
     else:
         raise HTTPException(status_code=400, detail="无法删除默认配置或配置不存在")

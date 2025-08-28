@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 import sys
@@ -10,12 +11,19 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from app import database
 from app.routers import proxy, admin, usage, web
 from app.config import settings
+from app.middleware import ProxyHeadersMiddleware
 
 app = FastAPI(
-    title="Claude Code Proxy Server",
-    description="代理Anthropic LLM协议，提供API密钥管理和用量统计",
-    version="1.0.0"
+    title="ClaudeMany",
+    description="A high-performance proxy server for Anthropic Claude API",
+    version="2.0.0"
 )
+
+# 信任所有主机（生产环境应该配置具体域名）
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
+
+# 添加代理头处理中间件
+app.add_middleware(ProxyHeadersMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
