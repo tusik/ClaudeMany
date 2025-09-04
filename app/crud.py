@@ -12,7 +12,12 @@ def hash_api_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 def generate_api_key() -> str:
-    return f"ck-{secrets.token_urlsafe(32)}"
+    # 生成不含特殊字符的随机字符串
+    token = secrets.token_urlsafe(32).replace('-', '').replace('_', '')
+    # 如果长度不够32位，继续生成直到够长
+    while len(token) < 32:
+        token += secrets.token_urlsafe(16).replace('-', '').replace('_', '')
+    return f"ck-{token[:32]}"
 
 # 后端配置管理
 def create_backend_config(db: Session, name: str, base_url: str, api_key: str, is_default: bool = False) -> database.BackendConfig:
