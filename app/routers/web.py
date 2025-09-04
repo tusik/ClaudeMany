@@ -186,6 +186,53 @@ async def web_deactivate_key(
     crud.deactivate_api_key(db, key_id)
     return RedirectResponse(url=get_redirect_url(request, "/web/"), status_code=303)
 
+@router.post("/delete-key/{key_id}")
+async def web_delete_key(
+    key_id: str,
+    request: Request,
+    db: Session = Depends(database.get_db)
+):
+    # 验证token
+    token = request.cookies.get("admin_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="未登录")
+    
+    try:
+        from jose import jwt
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        if payload.get("sub") != settings.admin_username:
+            raise HTTPException(status_code=401, detail="权限不足")
+    except:
+        raise HTTPException(status_code=401, detail="Token无效")
+    
+    crud.delete_api_key(db, key_id)
+    return RedirectResponse(url=get_redirect_url(request, "/web/"), status_code=303)
+
+@router.post("/regenerate-key/{key_id}")
+async def web_regenerate_key(
+    key_id: str,
+    request: Request,
+    db: Session = Depends(database.get_db)
+):
+    # 验证token
+    token = request.cookies.get("admin_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="未登录")
+    
+    try:
+        from jose import jwt
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        if payload.get("sub") != settings.admin_username:
+            raise HTTPException(status_code=401, detail="权限不足")
+    except:
+        raise HTTPException(status_code=401, detail="Token无效")
+    
+    db_key, new_key = crud.regenerate_api_key(db, key_id)
+    if db_key and new_key:
+        return RedirectResponse(url=get_redirect_url(request, f"/web/?regenerated_key={new_key}&key_name={db_key.name}"), status_code=303)
+    else:
+        raise HTTPException(status_code=404, detail="API密钥不存在")
+
 # 后端配置管理路由
 @router.post("/create-backend")
 async def web_create_backend(

@@ -126,6 +126,41 @@ def deactivate_api_key(db: Session, key_id: str) -> bool:
         return True
     return False
 
+def delete_api_key(db: Session, key_id: str) -> bool:
+    """删除API密钥及其相关使用记录"""
+    db_key = db.query(database.APIKey).filter(database.APIKey.id == key_id).first()
+    if db_key:
+        # 先删除相关的使用记录
+        db.query(database.UsageRecord).filter(database.UsageRecord.api_key_id == key_id).delete()
+        db.query(database.DailyUsage).filter(database.DailyUsage.api_key_id == key_id).delete()
+        
+        # 删除API密钥
+        db.delete(db_key)
+        db.commit()
+        return True
+    return False
+
+def regenerate_api_key(db: Session, key_id: str) -> tuple[database.APIKey, str]:
+    """重新生成API密钥"""
+    db_key = db.query(database.APIKey).filter(database.APIKey.id == key_id).first()
+    if not db_key:
+        return None, None
+    
+    # 生成新的API密钥
+    new_key = generate_api_key()
+    new_key_hash = hash_api_key(new_key)
+    
+    # 更新数据库中的密钥信息
+    db_key.key_hash = new_key_hash
+    db_key.key_value = new_key
+    db_key.created_at = datetime.utcnow()  # 更新创建时间
+    db_key.last_used = None  # 重置最后使用时间
+    
+    db.commit()
+    db.refresh(db_key)
+    
+    return db_key, new_key
+
 def update_api_key(db: Session, key_id: str, name: str = None, rate_limit: int = None, quota_limit: int = None, cost_limit: float = None, daily_quota: float = None) -> bool:
     """更新API密钥的配置"""
     db_key = db.query(database.APIKey).filter(database.APIKey.id == key_id).first()

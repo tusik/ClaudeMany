@@ -65,6 +65,14 @@
     </div>
     {% endif %}
 
+    {% if request.query_params.get('regenerated_key') %}
+    <div class="new-key-alert" style="background: #fff3cd; color: #856404; border-left: 4px solid #ffc107;">
+        <strong>API密钥已重新生成 ({{ request.query_params.get('key_name') }}):</strong><br>
+        <div class="api-key">{{ request.query_params.get('regenerated_key') }}</div>
+        <small>请立即复制保存新密钥，旧密钥已失效！</small>
+    </div>
+    {% endif %}
+
     <div class="stats">
         <div class="stat-card">
             <div class="stat-number">{{ stats.total_api_keys }}</div>
@@ -208,6 +216,14 @@
                                         onclick="showKeyDetails('{{ key.id }}', '{{ key.name }}')">详情</button>
                                 <button class="btn-small" style="background: #17a2b8; color: white; margin-left: 5px;" 
                                         onclick="editKey('{{ key.id }}')">编辑</button>
+                                <form method="post" action="/web/regenerate-key/{{ key.id }}" style="display: inline; margin-left: 5px;">
+                                    <button type="submit" class="btn-small" style="background: #ffc107; color: #212529;" 
+                                            onclick="return confirm('确定要重新生成API密钥吗？\n旧密钥将立即失效，使用旧密钥的应用将无法访问！')">重新生成</button>
+                                </form>
+                                <form method="post" action="/web/delete-key/{{ key.id }}" style="display: inline; margin-left: 5px;">
+                                    <button type="submit" class="btn-small" style="background: #dc3545; color: white;" 
+                                            onclick="return confirm('确定要删除这个API密钥吗？\n这将同时删除所有相关的使用记录，此操作不可撤销！')">删除</button>
+                                </form>
                             </div>
                             <div id="actions-edit-{{ key.id }}" style="display: none;">
                                 <button class="btn-small" style="background: #28a745; color: white;" 
