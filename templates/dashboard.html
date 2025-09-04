@@ -28,6 +28,7 @@
         .btn-small { padding: 4px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
         .btn-danger { background: #dc3545; color: white; }
         .api-key { font-family: monospace; background: #f8f9fa; padding: 4px 8px; border-radius: 4px; word-break: break-all; }
+        .api-key-cell { min-width: 200px; max-width: 300px; }
         .new-key-alert { background: #d4edda; color: #155724; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #28a745; }
         
         /* 标签页样式 */
@@ -125,6 +126,7 @@
                 <thead>
                     <tr>
                         <th>名称</th>
+                        <th>API密钥</th>
                         <th>状态</th>
                         <th>速率限制</th>
                         <th>配额限制</th>
@@ -146,6 +148,18 @@
                     {% set stats = item.stats %}
                     <tr id="row-{{ key.id }}">
                         <td><strong>{{ key.name }}</strong></td>
+                        <td class="api-key-cell">
+                            {% if key.key_value %}
+                                <div class="api-key" style="font-size: 11px; word-break: break-all;">
+                                    {{ key.key_value }}
+                                </div>
+                            {% else %}
+                                <div class="api-key" style="font-size: 11px;">
+                                    {{ key.key_hash[:16] }}...
+                                </div>
+                            {% endif %}
+                            <small style="color: #666;">{{ key.created_at.strftime('%m-%d %H:%M') }}</small>
+                        </td>
                         <td>
                             {% if key.is_active %}
                                 <span class="status-active">活跃</span>

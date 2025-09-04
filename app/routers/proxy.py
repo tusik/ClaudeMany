@@ -101,34 +101,70 @@ async def proxy_claude_api(
         
         # 发起请求
         start_time = time.time()
-        response = await claude_client.client.request(
+        
+        # 使用流式请求来获得真实的token时间
+        async with claude_client.client.stream(
             method=request.method,
             url=url,
             headers=proxy_headers,
             content=request_body,
             params=dict(request.query_params)
-        )
-        end_time = time.time()
-        processing_time = end_time - start_time
-        
-        # 调试响应信息
-        print(f"Response Status: {response.status_code}")
-        print(f"Response Headers: {dict(response.headers)}")
-        print(f"Response Content length: {len(response.content)}")
-        if len(response.content) > 0:
-            print(f"Response Content preview: {response.content[:500]}")
-        else:
-            print("Response Content: EMPTY!")
-        
-        # 检查是否是空响应但状态码200的情况
-        if response.status_code == 200 and len(response.content) == 0:
-            print("WARNING: Got empty response with 200 status code!")
-            # 返回一个错误响应给客户端
-            return Response(
-                content='{"error": {"message": "Empty response from upstream API", "type": "proxy_error"}}',
-                status_code=502,
-                headers={"content-type": "application/json"}
-            )
+        ) as response:
+            end_time = time.time()
+            processing_time = end_time - start_time
+            
+            # 调试响应信息
+            print(f"Response Status: {response.status_code}")
+            print(f"Response Headers: {dict(response.headers)}")
+            
+            # 检查内容类型
+            content_type = response.headers.get("content-type", "")
+            
+            # 收集响应内容和计时信息
+            response_chunks = []
+            first_token_time = None
+            last_token_time = None
+            
+            if "text/event-stream" in content_type:
+                print("Processing streaming response...")
+                async for chunk in response.aiter_text():
+                    if chunk:
+                        response_chunks.append(chunk)
+                        
+                        # 检查是否是第一个实际内容token
+                        if first_token_time is None and 'content_block_delta' in chunk:
+                            first_token_time = time.time()
+                            print(f"First content token received at: {first_token_time}")
+                        
+                        # 持续更新最后token时间
+                        if 'content_block_delta' in chunk or 'message_delta' in chunk:
+                            last_token_time = time.time()
+            else:
+                # 非流式响应
+                print("Processing non-streaming response...")
+                async for chunk in response.aiter_bytes():
+                    response_chunks.append(chunk.decode('utf-8'))
+            
+            # 组合完整响应内容
+            if "text/event-stream" in content_type:
+                response_content = ''.join(response_chunks).encode('utf-8')
+            else:
+                response_content = ''.join(response_chunks).encode('utf-8')
+            
+            print(f"Response Content length: {len(response_content)}")
+            if len(response_content) > 0:
+                print(f"Response Content preview: {response_content[:500]}")
+            else:
+                print("Response Content: EMPTY!")
+            
+            # 检查是否是空响应但状态码200的情况
+            if response.status_code == 200 and len(response_content) == 0:
+                print("WARNING: Got empty response with 200 status code!")
+                return Response(
+                    content='{"error": {"message": "Empty response from upstream API", "type": "proxy_error"}}',
+                    status_code=502,
+                    headers={"content-type": "application/json"}
+                )
         
         # 后台统计（异步，不影响响应）
         async def record_stats():
@@ -140,22 +176,20 @@ async def proxy_claude_api(
                 cache_read_tokens = 0
                 model = "unknown"
                 
-                # 精确TPS计算相关变量
-                first_token_time = None
-                last_token_time = None
+                # 生成时间统计
                 generation_time = 0.0
                 
                 # 尝试解析响应中的token使用量
                 try:
-                    if response.content and len(response.content) > 0:
+                    if response_content and len(response_content) > 0:
                         content_type = response.headers.get("content-type", "")
                         
                         if "text/event-stream" in content_type:
                             # 解析SSE格式响应
-                            response_text = response.content.decode('utf-8')
+                            response_text = response_content.decode('utf-8')
                             print(f"Parsing SSE response for tokens...")
                             
-                            # 解析每个SSE事件，记录精确的token生成时间
+                            # 解析每个SSE事件，提取token统计信息
                             for line in response_text.split('\n'):
                                 if line.startswith('data: ') and not line.strip().endswith('[DONE]'):
                                     try:
@@ -176,14 +210,6 @@ async def proxy_claude_api(
                                                     cache_read_tokens = usage.get("cache_read_input_tokens", 0)
                                                     print(f"Found usage in message_start: model={model}, input={input_tokens}, output={output_tokens}, cache_creation={cache_creation_tokens}, cache_read={cache_read_tokens}")
                                             
-                                            # 记录第一个content token的时间
-                                            elif event_type == "content_block_delta":
-                                                if first_token_time is None:
-                                                    first_token_time = time.time()
-                                                    print(f"First token received at: {first_token_time}")
-                                                # 持续更新最后token时间
-                                                last_token_time = time.time()
-                                            
                                             # 检查message_delta事件中的usage更新
                                             elif event_type == "message_delta":
                                                 delta = data.get("delta", {})
@@ -191,25 +217,22 @@ async def proxy_claude_api(
                                                 if usage:
                                                     if "output_tokens" in usage:
                                                         output_tokens = usage["output_tokens"]
-                                                        print(f"Updated output tokens: {output_tokens}")
-                                                        # 记录最后token的时间
-                                                        last_token_time = time.time()
-                                                        print(f"Last token received at: {last_token_time}")
+                                                        print(f"Updated output tokens from message_delta: {output_tokens}")
                                     except json.JSONDecodeError:
                                         continue
                             
-                            # 计算精确的生成时间
+                            # 使用真实的token生成时间
                             if first_token_time and last_token_time and output_tokens > 0:
                                 generation_time = last_token_time - first_token_time
-                                print(f"Token generation time: {generation_time:.3f}s (from first to last token)")
+                                print(f"Real token generation time: {generation_time:.3f}s (from first to last token)")
                             else:
-                                # 如果无法获取精确时间，回退到总处理时间
+                                # 如果没有token生成时间，使用总处理时间
                                 generation_time = processing_time
-                                print(f"Using total processing time: {generation_time:.3f}s (fallback)")
+                                print(f"Using total processing time (no token timing): {generation_time:.3f}s")
                                                         
                         else:
                             # 非流式JSON响应
-                            response_data = json.loads(response.content.decode('utf-8'))
+                            response_data = json.loads(response_content.decode('utf-8'))
                             if isinstance(response_data, dict):
                                 model = response_data.get("model", "unknown")
                                 usage = response_data.get("usage", {})
@@ -224,7 +247,7 @@ async def proxy_claude_api(
                         # 计算总token数和精确成本
                         total_tokens = input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens
                         
-                        # 计算精确的输出TPS (基于实际token生成时间)
+                        # 计算输出TPS (基于生成时间)
                         output_tps = 0.0
                         if output_tokens > 0 and generation_time > 0:
                             output_tps = output_tokens / generation_time
@@ -243,8 +266,10 @@ async def proxy_claude_api(
                             print(f"Model: {model}")
                             print(f"Token breakdown: input={input_tokens}, output={output_tokens}, cache_creation={cache_creation_tokens}, cache_read={cache_read_tokens}, total={total_tokens}")
                             print(f"Total processing time: {processing_time:.3f}s")
-                            print(f"Token generation time: {generation_time:.3f}s")
-                            print(f"Precise output TPS: {output_tps:.2f} tokens/sec")
+                            print(f"Response generation time: {generation_time:.3f}s")
+                            if output_tokens > 0:
+                                output_tps = output_tokens / generation_time
+                                print(f"Output TPS: {output_tps:.2f} tokens/sec")
                             print(f"Precise cost: ${precise_cost:.8f}")
                         
                 except Exception as parse_error:
@@ -266,7 +291,7 @@ async def proxy_claude_api(
                     tokens_used=total_tokens,
                     cost=precise_cost,
                     request_size=len(request_body) if request_body else 0,
-                    response_size=len(response.content) if hasattr(response, 'content') else 0,
+                    response_size=len(response_content) if response_content else 0,
                     processing_time=processing_time,  # 保留总处理时间用于其他统计
                     output_tps=output_tps,  # 使用精确计算的TPS
                     status_code=response.status_code
@@ -286,7 +311,7 @@ async def proxy_claude_api(
         
         # 直接返回响应
         return Response(
-            content=response.content,
+            content=response_content,
             status_code=response.status_code,
             headers=response_headers
         )

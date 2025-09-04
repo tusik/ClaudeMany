@@ -29,6 +29,7 @@ class APIKey(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
     key_hash = Column(String, unique=True, nullable=False)
+    key_value = Column(String, nullable=True)  # 明文存储的完整API key
     is_active = Column(Boolean, default=True)
     rate_limit = Column(Integer, default=1000)  # 每小时请求数限制
     quota_limit = Column(Integer, default=100000)  # Token总量限制

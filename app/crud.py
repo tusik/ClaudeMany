@@ -99,6 +99,7 @@ def create_api_key(db: Session, api_key: schemas.APIKeyCreate) -> tuple[database
     db_key = database.APIKey(
         name=api_key.name,
         key_hash=key_hash,
+        key_value=key,  # 保存明文API key
         rate_limit=api_key.rate_limit or 1000,
         quota_limit=api_key.quota_limit or 100000,
         cost_limit=api_key.cost_limit or 10.0,
