@@ -142,8 +142,17 @@ async def proxy_claude_api(
             else:
                 # 非流式响应
                 print("Processing non-streaming response...")
+                raw_chunks = []
                 async for chunk in response.aiter_bytes():
-                    response_chunks.append(chunk.decode('utf-8'))
+                    raw_chunks.append(chunk)
+                
+                # 合并所有字节后再解码
+                full_response = b''.join(raw_chunks)
+                try:
+                    response_chunks.append(full_response.decode('utf-8'))
+                except UnicodeDecodeError as e:
+                    print(f"UTF-8 decode error: {e}, attempting with error handling...")
+                    response_chunks.append(full_response.decode('utf-8', errors='replace'))
             
             # 组合完整响应内容
             if "text/event-stream" in content_type:
