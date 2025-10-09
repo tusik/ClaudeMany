@@ -124,6 +124,8 @@ async def proxy_claude_api(
             response_chunks = []
             first_token_time = None
             last_token_time = None
+            response_text_preview = None
+            response_content = b''
             
             if "text/event-stream" in content_type:
                 print("Processing streaming response...")
@@ -145,24 +147,27 @@ async def proxy_claude_api(
                 raw_chunks = []
                 async for chunk in response.aiter_bytes():
                     raw_chunks.append(chunk)
-                
-                # 合并所有字节后再解码
-                full_response = b''.join(raw_chunks)
-                try:
-                    response_chunks.append(full_response.decode('utf-8'))
-                except UnicodeDecodeError as e:
-                    print(f"UTF-8 decode error: {e}, attempting with error handling...")
-                    response_chunks.append(full_response.decode('utf-8', errors='replace'))
-            
+
+                response_content = b''.join(raw_chunks)
+
+                if response_content:
+                    try:
+                        response_text_preview = response_content.decode('utf-8')
+                    except UnicodeDecodeError as e:
+                        print(f"UTF-8 decode error: {e}, attempting with error handling...")
+                        response_text_preview = response_content.decode('utf-8', errors='replace')
+
             # 组合完整响应内容
             if "text/event-stream" in content_type:
-                response_content = ''.join(response_chunks).encode('utf-8')
-            else:
-                response_content = ''.join(response_chunks).encode('utf-8')
+                response_text_preview = ''.join(response_chunks)
+                response_content = response_text_preview.encode('utf-8')
             
             print(f"Response Content length: {len(response_content)}")
             if len(response_content) > 0:
-                print(f"Response Content preview: {response_content[:500]}")
+                if response_text_preview is not None:
+                    print(f"Response Content preview: {response_text_preview[:500]}")
+                else:
+                    print(f"Response Content preview (bytes): {response_content[:500]}")
             else:
                 print("Response Content: EMPTY!")
             
@@ -184,9 +189,12 @@ async def proxy_claude_api(
                 cache_creation_tokens = 0
                 cache_read_tokens = 0
                 model = "unknown"
-                
+                total_tokens = 0
+                output_tps = 0.0
+                precise_cost = 0.0
+
                 # 生成时间统计
-                generation_time = 0.0
+                generation_time = processing_time
                 
                 # 尝试解析响应中的token使用量
                 try:
@@ -195,7 +203,7 @@ async def proxy_claude_api(
                         
                         if "text/event-stream" in content_type:
                             # 解析SSE格式响应
-                            response_text = response_content.decode('utf-8')
+                            response_text = response_content.decode('utf-8', errors='replace')
                             print(f"Parsing SSE response for tokens...")
                             
                             # 解析每个SSE事件，提取token统计信息
@@ -239,25 +247,31 @@ async def proxy_claude_api(
                                 generation_time = processing_time
                                 print(f"Using total processing time (no token timing): {generation_time:.3f}s")
                                                         
+                        elif "json" in content_type:
+                            try:
+                                response_text = response_content.decode('utf-8')
+                            except UnicodeDecodeError as decode_error:
+                                print(f"Token stats decode error: {decode_error}")
+                            else:
+                                if response_text.strip():
+                                    response_data = json.loads(response_text)
+                                    if isinstance(response_data, dict):
+                                        model = response_data.get("model", "unknown")
+                                        usage = response_data.get("usage", {})
+                                        if usage:
+                                            input_tokens = usage.get("input_tokens", 0)
+                                            output_tokens = usage.get("output_tokens", 0)
+                                            cache_creation_tokens = usage.get("cache_creation_input_tokens", 0)
+                                            cache_read_tokens = usage.get("cache_read_input_tokens", 0)
+                                else:
+                                    print("Token stats: JSON response is empty after decoding.")
                         else:
-                            # 非流式JSON响应
-                            response_data = json.loads(response_content.decode('utf-8'))
-                            if isinstance(response_data, dict):
-                                model = response_data.get("model", "unknown")
-                                usage = response_data.get("usage", {})
-                                if usage:
-                                    input_tokens = usage.get("input_tokens", 0)
-                                    output_tokens = usage.get("output_tokens", 0)
-                                    cache_creation_tokens = usage.get("cache_creation_input_tokens", 0)
-                                    cache_read_tokens = usage.get("cache_read_input_tokens", 0)
-                                # 非流式响应使用总处理时间
-                                generation_time = processing_time
-                        
+                            print(f"Skipping token stats parsing for content-type: {content_type}")
+
                         # 计算总token数和精确成本
                         total_tokens = input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens
-                        
+
                         # 计算输出TPS (基于生成时间)
-                        output_tps = 0.0
                         if output_tokens > 0 and generation_time > 0:
                             output_tps = output_tokens / generation_time
                         
@@ -277,13 +291,20 @@ async def proxy_claude_api(
                             print(f"Total processing time: {processing_time:.3f}s")
                             print(f"Response generation time: {generation_time:.3f}s")
                             if output_tokens > 0:
-                                output_tps = output_tokens / generation_time
                                 print(f"Output TPS: {output_tps:.2f} tokens/sec")
                             print(f"Precise cost: ${precise_cost:.8f}")
-                        
+
                 except Exception as parse_error:
                     print(f"Token parsing error: {parse_error}")
                     # 如果解析失败，使用默认值和总处理时间
+                    input_tokens = 0
+                    output_tokens = 0
+                    cache_creation_tokens = 0
+                    cache_read_tokens = 0
+                    model = "unknown"
+                    total_tokens = 0
+                    output_tps = 0.0
+                    precise_cost = 0.0
                     generation_time = processing_time
                 
                 # 记录详细的使用统计（使用精确的generation_time计算的TPS）
