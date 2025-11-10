@@ -224,10 +224,11 @@ async def proxy_claude_api(
                             lines = response_text.split('\n')
                             for i, line in enumerate(lines):
                                 # 跳过事件行（event: ...），只处理数据行
-                                if not line.startswith('data: '):
+                                if not line.startswith('data:'):
                                     continue
 
-                                data_part = line[6:].strip()  # 移除 'data: ' 前缀
+                                # 移除 'data:' 前缀，处理有空格和无空格两种情况
+                                data_part = line[5:].strip()  # 移除 'data:' 前缀
 
                                 # 跳过[DONE]和空行
                                 if not data_part or data_part == '[DONE]':

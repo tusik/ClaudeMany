@@ -65,13 +65,14 @@ class ClaudeProxyClient:
             response_text = response_content.decode('utf-8', errors='replace')
 
             # 处理SSE格式响应
-            if 'data: ' in response_text:
+            if 'data:' in response_text:
                 # 解析所有数据行
                 lines = response_text.split('\n')
                 for i, line in enumerate(lines):
                     # 跳过事件行（event: ...），只处理数据行
-                    if line.startswith('data: '):
-                        data_part = line[6:].strip()  # 移除 'data: ' 前缀
+                    if line.startswith('data:'):
+                        # 移除 'data:' 前缀，处理有空格和无空格两种情况
+                        data_part = line[5:].strip()  # 移除 'data:' 前缀
 
                         # 跳过[DONE]和空行
                         if not data_part or data_part == '[DONE]':
