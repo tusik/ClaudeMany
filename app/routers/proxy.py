@@ -221,36 +221,48 @@ async def proxy_claude_api(
                             print(f"Parsing SSE response for tokens...")
                             
                             # 解析每个SSE事件，提取token统计信息
-                            for line in response_text.split('\n'):
-                                if line.startswith('data: ') and not line.strip().endswith('[DONE]'):
-                                    try:
-                                        data_json = line[6:]  # 移除 'data: ' 前缀
-                                        if data_json.strip():
-                                            data = json.loads(data_json)
-                                            event_type = data.get("type")
-                                            
-                                            # 检查message_start事件中的usage和model
-                                            if event_type == "message_start":
-                                                message = data.get("message", {})
-                                                model = message.get("model", "unknown")
-                                                usage = message.get("usage", {})
-                                                if usage:
-                                                    input_tokens = usage.get("input_tokens", 0)
-                                                    output_tokens = usage.get("output_tokens", 0)
-                                                    cache_creation_tokens = usage.get("cache_creation_input_tokens", 0)
-                                                    cache_read_tokens = usage.get("cache_read_input_tokens", 0)
-                                                    print(f"Found usage in message_start: model={model}, input={input_tokens}, output={output_tokens}, cache_creation={cache_creation_tokens}, cache_read={cache_read_tokens}")
-                                            
-                                            # 检查message_delta事件中的usage更新
-                                            elif event_type == "message_delta":
-                                                delta = data.get("delta", {})
-                                                usage = delta.get("usage", {})
-                                                if usage:
-                                                    if "output_tokens" in usage:
-                                                        output_tokens = usage["output_tokens"]
-                                                        print(f"Updated output tokens from message_delta: {output_tokens}")
-                                    except json.JSONDecodeError:
-                                        continue
+                            lines = response_text.split('\n')
+                            for i, line in enumerate(lines):
+                                # 跳过事件行（event: ...），只处理数据行
+                                if not line.startswith('data: '):
+                                    continue
+
+                                data_part = line[6:].strip()  # 移除 'data: ' 前缀
+
+                                # 跳过[DONE]和空行
+                                if not data_part or data_part == '[DONE]':
+                                    continue
+
+                                try:
+                                    data = json.loads(data_part)
+                                    event_type = data.get("type")
+
+                                    # 检查message_start事件中的usage和model
+                                    if event_type == "message_start":
+                                        message = data.get("message", {})
+                                        model = message.get("model", "unknown")
+                                        usage = message.get("usage", {})
+                                        if usage:
+                                            input_tokens = usage.get("input_tokens", 0)
+                                            output_tokens = usage.get("output_tokens", 0)
+                                            cache_creation_tokens = usage.get("cache_creation_input_tokens", 0)
+                                            cache_read_tokens = usage.get("cache_read_input_tokens", 0)
+                                            print(f"Found usage in message_start: model={model}, input={input_tokens}, output={output_tokens}, cache_creation={cache_creation_tokens}, cache_read={cache_read_tokens}")
+
+                                    # 检查message_delta事件中的usage更新
+                                    elif event_type == "message_delta":
+                                        delta = data.get("delta", {})
+                                        usage = delta.get("usage", {})
+                                        if usage:
+                                            if "output_tokens" in usage:
+                                                output_tokens = usage["output_tokens"]
+                                                print(f"Updated output tokens from message_delta: {output_tokens}")
+                                except json.JSONDecodeError as e:
+                                    print(f"JSON decode error on line {i}: {e}")
+                                    continue
+                                except Exception as e:
+                                    print(f"Error parsing event on line {i}: {e}")
+                                    continue
                             
                             # 使用真实的token生成时间
                             if first_token_time and last_token_time and output_tokens > 0:

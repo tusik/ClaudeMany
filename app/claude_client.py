@@ -60,33 +60,68 @@ class ClaudeProxyClient:
         """
         if not response_content:
             return "unknown"
-        
+
         try:
-            # 尝试解析JSON响应
             response_text = response_content.decode('utf-8', errors='replace')
-            
-            # 检查是否是流式响应
+
+            # 处理SSE格式响应
             if 'data: ' in response_text:
-                # SSE格式，查找包含模型信息的行
-                for line in response_text.split('\n'):
-                    if line.startswith('data: ') and not line.strip().endswith('[DONE]'):
-                        try:
-                            data_json = line[6:]  # 移除 'data: ' 前缀
-                            if data_json.strip():
-                                data = json.loads(data_json)
-                                if data.get('type') == 'message_start':
-                                    message = data.get('message', {})
-                                    return message.get('model', 'unknown')
-                        except json.JSONDecodeError:
+                # 解析所有数据行
+                lines = response_text.split('\n')
+                for i, line in enumerate(lines):
+                    # 跳过事件行（event: ...），只处理数据行
+                    if line.startswith('data: '):
+                        data_part = line[6:].strip()  # 移除 'data: ' 前缀
+
+                        # 跳过[DONE]和空行
+                        if not data_part or data_part == '[DONE]':
                             continue
+
+                        try:
+                            data = json.loads(data_part)
+                            event_type = data.get('type')
+
+                            # 从 message_start 事件提取模型
+                            if event_type == 'message_start':
+                                message = data.get('message', {})
+                                model = message.get('model')
+                                if model and model != 'unknown':
+                                    return model
+
+                            # 某些响应可能在其他事件类型中包含模型信息
+                            elif event_type in ['content_block_start', 'message']:
+                                # 检查是否在顶层有model字段
+                                if 'model' in data:
+                                    model = data['model']
+                                    if model and model != 'unknown':
+                                        return model
+
+                        except json.JSONDecodeError as e:
+                            print(f"JSON decode error on line {i}: {e}")
+                            continue
+
+                # 如果没有找到message_start，尝试其他方法
+                print("No message_start event found in SSE response, checking other locations")
+
+            # 处理非流式JSON响应
             else:
-                # 非流式响应
-                response_data = json.loads(response_text)
-                return response_data.get('model', 'unknown')
-                
+                response_data = json.loads(response_text.strip())
+                if isinstance(response_data, dict):
+                    # 直接查找model字段
+                    if 'model' in response_data:
+                        return response_data['model']
+
+                    # 检查是否在message对象中
+                    if 'message' in response_data:
+                        message = response_data['message']
+                        if isinstance(message, dict) and 'model' in message:
+                            return message['model']
+
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             print(f"Error extracting model from response: {e}")
-        
+        except Exception as e:
+            print(f"Unexpected error extracting model: {e}")
+
         return "unknown"
     
     async def proxy_request_stream(self, method: str, endpoint: str, headers: Dict[str, str] = None, 
