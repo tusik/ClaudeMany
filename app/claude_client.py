@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from typing import Dict, Any, AsyncGenerator
 import time
 import json
+import fnmatch
 from app.config import settings
 
 class ClaudeProxyClient:
@@ -10,28 +11,58 @@ class ClaudeProxyClient:
         self.base_url = settings.anthropic_base_url
         self.api_key = settings.anthropic_api_key
         self.client = httpx.AsyncClient(timeout=300.0)
-    
+
+    def _find_matching_model(self, model_name: str) -> str:
+        """
+        根据通配符模式匹配模型名称
+        支持 Unix shell 风格的通配符:
+        - * 匹配任意多个字符
+        - ? 匹配单个字符
+        - [seq] 匹配序列中的任意字符
+        - [!seq] 匹配不在序列中的任意字符
+
+        返回匹配到的目标模型名称，如果没有匹配则返回原模型名称
+        """
+        if not settings.model_mapping:
+            return model_name
+
+        # 首先尝试精确匹配（向后兼容）
+        if model_name in settings.model_mapping:
+            return settings.model_mapping[model_name]
+
+        # 尝试通配符匹配
+        for pattern, target_model in settings.model_mapping.items():
+            # 如果模式包含通配符字符，使用 fnmatch
+            if any(char in pattern for char in ['*', '?', '[', ']']):
+                if fnmatch.fnmatch(model_name, pattern):
+                    print(f"Model matched wildcard pattern '{pattern}': {model_name} -> {target_model}")
+                    return target_model
+
+        # 没有匹配，返回原模型名称
+        return model_name
+
     def _replace_model_in_request(self, body: bytes) -> bytes:
         """
-        在请求体中替换模型名称
+        在请求体中替换模型名称（支持通配符匹配）
         """
         if not settings.enable_model_swapping or not settings.model_mapping:
             return body
-        
+
         if not body:
             return body
-        
+
         try:
             # 解析JSON请求体
             request_data = json.loads(body.decode('utf-8'))
-            
+
             # 检查是否有模型字段需要替换
-            if 'model' in request_data and request_data['model'] in settings.model_mapping:
+            if 'model' in request_data:
                 original_model = request_data['model']
-                new_model = settings.model_mapping[original_model]
-                request_data['model'] = new_model
-                print(f"Model replaced: {original_model} -> {new_model}")
-            
+                new_model = self._find_matching_model(original_model)
+                if new_model != original_model:
+                    request_data['model'] = new_model
+                    print(f"Model replaced: {original_model} -> {new_model}")
+
             # 检查messages中的工具使用情况
             if 'messages' in request_data:
                 for message in request_data['messages']:
@@ -41,15 +72,16 @@ class ClaudeProxyClient:
                             for item in content:
                                 if isinstance(item, dict) and item.get('type') == 'tool_use':
                                     # 工具使用中的模型替换逻辑
-                                    if 'name' in item and item['name'] in settings.model_mapping:
+                                    if 'name' in item:
                                         original_model = item['name']
-                                        new_model = settings.model_mapping[original_model]
-                                        item['name'] = new_model
-                                        print(f"Tool model replaced: {original_model} -> {new_model}")
-            
+                                        new_model = self._find_matching_model(original_model)
+                                        if new_model != original_model:
+                                            item['name'] = new_model
+                                            print(f"Tool model replaced: {original_model} -> {new_model}")
+
             # 重新编码为JSON
             return json.dumps(request_data, ensure_ascii=False).encode('utf-8')
-            
+
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             print(f"Error processing request body for model replacement: {e}")
             return body
