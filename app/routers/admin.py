@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app import database, crud, schemas, auth
 from app.config import settings
 from typing import List
+import json
 
 router = APIRouter()
 
@@ -214,3 +215,31 @@ async def get_daily_quota_status(
         "reset_time": (today_start + timedelta(days=1)).isoformat(),
         "is_limited": db_key.daily_quota > 0
     }
+
+@router.get("/model-swap-config", response_model=schemas.ModelSwapConfig)
+async def get_model_swap_config(
+    current_user: str = Depends(auth.get_current_admin_user)
+):
+    """获取模型替换配置"""
+    return schemas.ModelSwapConfig(
+        enable_model_swapping=settings.enable_model_swapping,
+        model_mapping=settings.model_mapping
+    )
+
+@router.put("/model-swap-config", response_model=schemas.ModelSwapConfig)
+async def update_model_swap_config(
+    config: schemas.ModelSwapConfig,
+    current_user: str = Depends(auth.get_current_admin_user)
+):
+    """更新模型替换配置"""
+    settings.enable_model_swapping = config.enable_model_swapping
+    settings.model_mapping = config.model_mapping
+    
+    # 保存配置到环境变量或配置文件
+    # 注意：这里只是内存中的修改，重启后会丢失
+    # 如果需要持久化，需要写入配置文件
+    
+    return schemas.ModelSwapConfig(
+        enable_model_swapping=settings.enable_model_swapping,
+        model_mapping=settings.model_mapping
+    )

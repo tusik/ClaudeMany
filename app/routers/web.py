@@ -87,7 +87,11 @@ async def admin_dashboard(request: Request, db: Session = Depends(database.get_d
                         "api_keys_with_stats": api_keys_with_stats,
                         "stats": stats,
                         "backend_configs": backend_configs,
-                        "active_config": active_config
+                        "active_config": active_config,
+                        "model_swap_config": {
+                            "enable_model_swapping": settings.enable_model_swapping,
+                            "model_mapping": settings.model_mapping
+                        }
                     })
             except JWTError:
                 pass

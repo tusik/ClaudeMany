@@ -67,3 +67,7 @@ class AdminLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+class ModelSwapConfig(BaseModel):
+    enable_model_swapping: bool
+    model_mapping: dict

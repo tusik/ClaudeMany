@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, Dict, List
 
 class Settings(BaseSettings):
     anthropic_api_key: str
@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     
     default_rate_limit: int = 1000
     default_quota_limit: int = 100000
+    
+    # 模型替换功能配置
+    enable_model_swapping: bool = False  # 模型替换功能开关
+    model_mapping: Dict[str, str] = {}  # 模型映射表，格式: {"原始模型": "目标模型"}
     
     class Config:
         env_file = ".env"

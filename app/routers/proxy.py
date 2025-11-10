@@ -1,8 +1,10 @@
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 from app import database, crud
 from app.claude_client import claude_client
+from app.config import settings
 import time
 import json
 
@@ -79,11 +81,23 @@ async def proxy_claude_api(
         
         # 构建代理请求头 - 使用后端配置的API密钥
         proxy_headers = {}
+        original_auth_header = None
+
         for k, v in request.headers.items():
             if k.lower() not in ["host", "authorization", "x-api-key"]:
                 proxy_headers[k] = v
-        
-        proxy_headers["x-api-key"] = backend_config.api_key
+            elif k.lower() == "authorization":
+                original_auth_header = "authorization"
+            elif k.lower() == "x-api-key":
+                original_auth_header = "x-api-key"
+
+        # 使用原始请求的认证头格式
+        if original_auth_header == "authorization":
+            proxy_headers["Authorization"] = f"Bearer {backend_config.api_key}"
+        else:
+            # 默认使用 x-api-key
+            proxy_headers["x-api-key"] = backend_config.api_key
+
         if "anthropic-version" not in proxy_headers:
             proxy_headers["anthropic-version"] = "2023-06-01"
         
@@ -267,6 +281,11 @@ async def proxy_claude_api(
                                     print("Token stats: JSON response is empty after decoding.")
                         else:
                             print(f"Skipping token stats parsing for content-type: {content_type}")
+
+                        # 如果无法从响应中提取模型，使用claude_client提取
+                        if model == "unknown":
+                            model = claude_client._extract_model_from_response(response_content)
+                            print(f"Extracted model from response: {model}")
 
                         # 计算总token数和精确成本
                         total_tokens = input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens
